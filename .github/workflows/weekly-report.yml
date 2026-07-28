@@ -1,0 +1,50 @@
+name: Weekly Fashion LinkedIn Report
+
+on:
+  schedule:
+    # 12:00 UTC ≈ 8am ET (7am during EDT) — adjust for your timezone/DST preference
+    - cron: '0 12 * * 1'  # Monday — industry news roundup
+    - cron: '0 12 * * 3'  # Wednesday — collections & collaborations
+  workflow_dispatch:
+    inputs:
+      type:
+        description: 'Report type'
+        required: true
+        type: choice
+        options:
+          - industry
+          - drops
+        default: industry
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      - name: Determine report type
+        id: type
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "type=${{ inputs.type }}" >> "$GITHUB_OUTPUT"
+          elif [ "$(date -u +%u)" = "1" ]; then
+            echo "type=industry" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=drops" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate report and open issue
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/generate_report.py --type ${{ steps.type.outputs.type }}
