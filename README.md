@@ -83,6 +83,30 @@ This is the fast loop for iterating on a spec.
    Actions → "Weekly Fashion LinkedIn Report" → "Run workflow", pick
    `industry` or `drops`, and run it. Check the new Issue it creates.
 
+## Operational notes
+
+**Why this runs on GitHub Actions, not a cron job on your Mac.** A local cron
+job only fires if the machine is awake at that moment — a closed laptop on a
+Monday morning means no draft, silently, with no catch-up. Actions runs on
+GitHub's servers, so your Mac only needs to be on when you want to edit a spec
+or test with `--local`. Cost isn't a factor: private repos get 2,000 free
+Actions-minutes/month and this job uses ~2–5 minutes per run (~40 min/month).
+
+**Scheduled runs are not punctual.** GitHub queues them and runs them when
+capacity frees up — usually a few minutes late, occasionally 30–60 minutes
+during peak load. If you have a hard posting deadline, schedule the run a
+couple of hours earlier and give yourself margin.
+
+**Schedules auto-disable after 60 days of repo inactivity.** If you don't push
+anything for two months, GitHub silently stops the scheduled workflow. Editing
+specs counts as activity, so this rarely triggers in practice — and the failure
+is obvious (no Issue appears). If it happens: push any commit, then re-enable
+the workflow from the Actions tab.
+
+**Cron is UTC and ignores daylight saving.** The times in the workflow are fixed
+UTC, so the local time they land drifts by an hour twice a year. Update the cron
+lines if that matters to you.
+
 ## Getting notified
 
 Since this skips email for now, the practical way to "get the report each
