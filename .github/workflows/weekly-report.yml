@@ -18,7 +18,7 @@ on:
 
 permissions:
   issues: write
-  contents: read
+  contents: write   # needed to commit the updated history/covered.json ledger
 
 jobs:
   generate:
@@ -48,3 +48,17 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/generate_report.py --type ${{ steps.type.outputs.type }}
+
+      - name: Commit updated coverage ledger
+        run: |
+          if git diff --quiet -- history/covered.json; then
+            echo "No new items recorded; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add history/covered.json
+          git commit -m "Record covered items for ${{ steps.type.outputs.type }} $(date -u +%Y-%m-%d)"
+          # Rebase in case you pushed a spec edit while the job was running
+          git pull --rebase --autostash origin main
+          git push origin HEAD:main

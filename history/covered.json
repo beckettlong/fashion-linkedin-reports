@@ -1,0 +1,4 @@
+{
+  "_comment": "Ledger of items already covered in published reports. Written automatically by scripts/generate_report.py after each cloud run, and read back on the next run to prevent repeats. Safe to hand-edit: delete an entry to let that story resurface, or add one by hand to suppress a story you don't want covered.",
+  "entries": []
+}

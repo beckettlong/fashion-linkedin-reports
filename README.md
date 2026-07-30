@@ -42,6 +42,33 @@ them as you see what the drafts get wrong: if a week comes back with five sneake
 collabs and nothing else, that's a line to add to the prioritization section; if
 it keeps surfacing brands too small for your audience, add a size floor.
 
+## Not repeating yourself — `history/covered.json`
+
+Each run records the stories it covered to `history/covered.json` and commits
+that file back to the repo. The next run loads the recent entries and is told
+not to repeat them.
+
+Dedup is **item-level, not brand-level**, so a brand can appear every week as
+long as the story is different. A story can also legitimately reappear when
+there's a genuine material development — a bid rejected, a valuation changed, a
+collection that was announced and has now actually launched. In those cases the
+draft leads with what's new instead of re-narrating what you already published.
+This is deliberate: your existing posts follow live stories across weeks (the
+Frasers/HUGO BOSS takeover ran over multiple editions), and a blunt filter would
+have suppressed the follow-ups. Executive appointments are the exception — those
+never repeat.
+
+Lookback windows: **6 weeks** for drops, **8 weeks** for industry news.
+Adjust `lookback_days` in `scripts/generate_report.py` to change them.
+
+The ledger is plain JSON and safe to hand-edit:
+- **Delete an entry** to let that story resurface in the next report
+- **Add an entry by hand** to suppress a story you never want covered
+- Entries carry `"followup": true` when a story was covered before, so you can
+  scan the file to see which threads are being tracked across weeks
+
+`--local` runs never write to the ledger, so testing doesn't pollute it.
+
 ## Running it by hand
 
 To test a spec change without waiting for the schedule or opening an Issue:
