@@ -4,108 +4,115 @@ Research current fashion/apparel news via Claude's web search tool, draft a
 LinkedIn post in the account's historic format, and open the draft as a
 GitHub Issue for human review (manual posting — this script never touches
 LinkedIn).
+
+Editorial criteria live in specs/*.md, not in this file. Edit those to change
+what gets pulled.
 """
 import argparse
 import os
+import sys
 from datetime import date, timedelta
+from pathlib import Path
 
 import anthropic
 import requests
 
 MODEL = "claude-opus-5"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
-INDUSTRY_INSTRUCTIONS = """
-You are drafting a LinkedIn post for a fashion/apparel/footwear industry newsletter.
-Use the web_search tool to find REAL, VERIFIABLE news from the past 7 days (as of {today}).
-Only include stories you found via search — never invent names, figures, or quotes.
-
-Cover these categories, in this order, using ONLY items with a real, cited source:
-
-1. BRAND GROWTH — store openings, product launches, sales/revenue milestones
-2. INVESTMENT AND M&A ACTIVITY — funding rounds, acquisitions, IPOs, stake sales
-3. INDUSTRY MOVES — executive hires/departures/promotions at fashion, footwear, or
-   apparel companies
-
-Match this EXACT historic format:
-
-🚨LATEST FASHION, FOOTWEAR, AND APPAREL NEWS
+REPORTS = {
+    "industry": {
+        "spec": "specs/industry-news.md",
+        "label": "Industry News",
+        "window_days": 7,
+        "format": """🚨LATEST FASHION, FOOTWEAR, AND APPAREL NEWS
 [one sentence teaser naming the week's 1-2 biggest stories]
 
 📈BRAND GROWTH
 • [Brand] [Headline in title case] ([Source outlet])
-[1-2 sentence summary of the news, written in a neutral trade-press tone,
-including the key figures/facts]
+[1-2 sentence summary with the key figures]
 
 💰INVESTMENT AND M&A ACTIVITY
-• [Company] [Headline] ([Source outlet])
-[1-2 sentence summary]
+• [Company] [Headline in title case] ([Source outlet])
+[1-2 sentence summary with the key figures]
 
 🔄INDUSTRY MOVES
 • [Full Name] → [New Title], [Company] ([Source outlet])
-(repeat for each move found, 5-10 items if available)
+[one line per move, no summary paragraph]""",
+    },
+    "drops": {
+        "spec": "specs/collaborations.md",
+        "label": "Collections & Collaborations",
+        "window_days": 7,
+        "format": """🛍 [Start Date] – [End Date] Collections & Collaborations
+[1-2 sentence intro summarizing the themes of the week's drops]
 
-Pick 2-3 items per BRAND GROWTH and INVESTMENT sections (the strongest, most
-verifiable stories), and as many INDUSTRY MOVES items as you can confidently
-source.
+[Brand] × [Brand] "[Collection Name]" ([Release date])
+[one short paragraph with the details]
 
-After the full post text, add a section titled "SUGGESTED LINKEDIN TAGS" listing
-every named individual and brand/company mentioned above. For each one, do NOT
-guess a LinkedIn profile URL — instead give a LinkedIn people-search link built
-from their name and company, formatted as:
+[repeat per item]""",
+    },
+}
+
+PROMPT = """You are researching and drafting a LinkedIn post for a fashion,
+footwear, and apparel industry newsletter.
+
+Today is {today}. The report window is {start} through {today} — find news
+announced or published in that window.
+
+Use the web_search tool to gather the stories. Search repeatedly and from
+different angles until you have enough material to satisfy the brief below;
+do not stop after one search. Only report things you actually found via
+search — never invent a name, figure, date, or detail.
+
+=== EDITORIAL BRIEF ===
+{spec}
+=== END EDITORIAL BRIEF ===
+
+Output the post in exactly this format:
+
+{format}
+
+After the post text, add two more sections.
+
+First, "SUGGESTED LINKEDIN TAGS" — list every named individual and every
+brand/company mentioned in the post above. Do NOT guess a LinkedIn profile
+URL. Instead give a LinkedIn people-search link built from their name and
+company, formatted as:
 - [Full Name] ([Company]): https://www.linkedin.com/search/results/people/?keywords=<urlencoded "Full Name Company">
 The person composing the post will click through and pick the correct match
-themselves, so accuracy of the search terms matters more than a guessed profile.
+themselves, so accurate search terms matter more than a guessed profile.
 
-Then add a "SOURCES" section listing every URL you used, one per line.
-"""
-
-DROPS_INSTRUCTIONS = """
-You are drafting a LinkedIn post for a fashion/apparel newsletter covering the
-week's collaborations and product drops. Use the web_search tool to find REAL,
-VERIFIABLE collaborations, capsule collections, or special releases announced
-or launched between {start} and {today}. Only include drops you found via
-search — never invent brands, dates, or details.
-
-Match this EXACT historic format:
-
-🛍 [Start Date] – [Today's Date] Collections & Collaborations
-[1-2 sentence intro summarizing the theme/highlights of the week's drops]
-
-[Brand] × [Brand] "[Capsule/Collection Name]" ([Release date])
-[1 short paragraph: what the collaboration is, key details — price, availability,
-design inspiration, notable people involved]
-
-(repeat for each drop found, aim for 4-8 items)
-
-After the full post text, add a section titled "SUGGESTED LINKEDIN TAGS" listing
-every named individual, brand, and company mentioned above. For each one, do NOT
-guess a LinkedIn profile URL — instead give a LinkedIn people-search link built
-from their name and company, formatted as:
-- [Full Name] ([Company]): https://www.linkedin.com/search/results/people/?keywords=<urlencoded "Full Name Company">
-The person composing the post will click through and pick the correct match
-themselves, so accuracy of the search terms matters more than a guessed profile.
-
-Then add a "SOURCES" section listing every URL you used, one per line.
+Second, "SOURCES" — every URL you used, one per line, labeled with the item
+it supports.
 """
 
 
-def build_prompt(report_type: str) -> str:
-    today = date.today()
-    if report_type == "industry":
-        return INDUSTRY_INSTRUCTIONS.format(today=today.isoformat())
-    start = today - timedelta(days=7)
-    return DROPS_INSTRUCTIONS.format(start=start.isoformat(), today=today.isoformat())
+def load_spec(spec_path: str) -> str:
+    path = REPO_ROOT / spec_path
+    if not path.exists():
+        sys.exit(f"Spec file not found: {path}")
+    return path.read_text(encoding="utf-8").strip()
 
 
 def generate(report_type: str) -> str:
-    client = anthropic.Anthropic()
-    prompt = build_prompt(report_type)
+    config = REPORTS[report_type]
+    today = date.today()
+    start = today - timedelta(days=config["window_days"])
 
+    prompt = PROMPT.format(
+        today=today.isoformat(),
+        start=start.isoformat(),
+        spec=load_spec(config["spec"]),
+        format=config["format"],
+    )
+
+    client = anthropic.Anthropic()
     with client.messages.stream(
         model=MODEL,
-        max_tokens=8000,
-        output_config={"effort": "medium"},
-        tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 15}],
+        max_tokens=16000,
+        output_config={"effort": "high"},
+        tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 25}],
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
         response = stream.get_final_message()
@@ -137,15 +144,22 @@ def create_github_issue(title: str, body: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--type", choices=["industry", "drops"], required=True)
+    parser.add_argument("--type", choices=sorted(REPORTS), required=True)
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Print the draft to stdout instead of opening a GitHub Issue.",
+    )
     args = parser.parse_args()
 
     report_text = generate(args.type)
-    label = "Industry News" if args.type == "industry" else "Collections & Collaborations"
-    title = f"[{label}] Draft for {date.today().isoformat()}"
 
-    url = create_github_issue(title, report_text)
-    print(f"Draft posted: {url}")
+    if args.local:
+        print(report_text)
+        return
+
+    title = f"[{REPORTS[args.type]['label']}] Draft for {date.today().isoformat()}"
+    print(f"Draft posted: {create_github_issue(title, report_text)}")
 
 
 if __name__ == "__main__":

@@ -14,13 +14,46 @@ ready.
 ## How it works
 
 1. A GitHub Actions workflow fires twice a week (Monday & Wednesday mornings).
-2. It calls Claude with the web search tool to gather this week's fashion/
-   apparel news, then drafts the post in your exact format.
+2. It reads the editorial brief from `specs/`, then calls Claude with the web
+   search tool to gather this week's fashion/apparel news and draft the post in
+   your exact format.
 3. For every person/brand mentioned, it generates a LinkedIn *people-search*
    link (not a guessed profile URL) — click it while composing your post to
    pick the correct match before typing `@Name`.
 4. The draft + sources + tag-search links are posted as a new GitHub Issue.
    You review/edit, then copy the text into LinkedIn and post it yourself.
+
+## Tuning what it pulls — `specs/`
+
+The editorial criteria live in plain markdown, not in the code:
+
+- `specs/industry-news.md` — the Monday roundup
+- `specs/collaborations.md` — the Wednesday drops post
+
+Each spec covers what counts as an item, what to exclude, how many to pull, how
+to prioritize when there are more candidates than slots, which details each item
+must carry, tone, and preferred sources. The script loads the file at runtime and
+passes it to Claude as the brief, so **editing the markdown is the whole workflow**
+— no Python changes, no redeploy. Commit the edit and the next run uses it.
+
+I pre-filled both specs by reverse-engineering the criteria from your example
+posts, so they should already be close. Treat them as a starting point and tighten
+them as you see what the drafts get wrong: if a week comes back with five sneaker
+collabs and nothing else, that's a line to add to the prioritization section; if
+it keeps surfacing brands too small for your audience, add a size floor.
+
+## Running it by hand
+
+To test a spec change without waiting for the schedule or opening an Issue:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+pip install -r requirements.txt
+python scripts/generate_report.py --type drops --local
+```
+
+`--local` prints the draft to your terminal instead of creating a GitHub Issue.
+This is the fast loop for iterating on a spec.
 
 ## Setup
 
