@@ -11,12 +11,27 @@ in your historic format, and opens it as a **GitHub Issue** for you to review.
 LinkedIn. See "Future: automated posting" below for the next step when you're
 ready.
 
-## How it works
+## How it works — two stages, with you in the middle
 
-1. A GitHub Actions workflow fires twice a week (Monday & Wednesday mornings).
-2. It reads the editorial brief from `specs/`, then calls Claude with the web
-   search tool to gather this week's fashion/apparel news and draft the post in
-   your exact format.
+**Stage 1 — collect (automatic, Mon & Wed mornings).** Searches the web for the
+week's stories, scores each on *relevance* and *hype*, and opens a `[REVIEW]`
+issue containing a ranked table plus a checkbox list. Nothing is drafted yet.
+
+**You review.** Tick the stories you want. Ignore the rest.
+
+**Stage 2 — draft (triggered by you).** Add the **`approved`** label to the
+review issue. That fires the drafting run, which reads each approved article in
+full via web fetch, writes the post in your house format, and opens a second
+issue with the finished draft. Only ticked stories can appear in it.
+
+```
+Mon 8am   →  [REVIEW] Industry News candidates — 18 ranked stories
+             you tick 6, add `approved` label
+             →  [Industry News] Draft — written from those 6 only
+```
+
+This means the model never decides what makes the newsletter — it proposes,
+you select, and drafting is constrained to your selection.
 3. For every person/brand mentioned, it generates a LinkedIn *people-search*
    link (not a guessed profile URL) — click it while composing your post to
    pick the correct match before typing `@Name`.
@@ -69,18 +84,39 @@ The ledger is plain JSON and safe to hand-edit:
 
 `--local` runs never write to the ledger, so testing doesn't pollute it.
 
+## Tuning the ranking — `specs/ranking.md`
+
+`specs/ranking.md` defines the two 1–10 scores used to rank candidates:
+
+- **Relevance** — does this belong in the newsletter at all? (fit to the beat)
+- **Hype** — how much attention is the drop actually getting? (momentum)
+
+Candidates are sorted by combined score, ties broken by relevance. The spec
+deliberately tells the model to **over-collect** (15–25 candidates) and never to
+drop a borderline item just because it scored low — filtering is your job, not
+the model's, and a low-scored item you can see beats one silently discarded.
+
+The one instruction worth knowing about: hype is explicitly *not* a proxy for
+brand size. A predictable capsule from a huge brand should score low; an
+unexpected pairing between two mid-size labels should score high. If the
+rankings don't match your instincts, that section is the place to start.
+
 ## Running it by hand
 
-To test a spec change without waiting for the schedule or opening an Issue:
+Test either stage without waiting for the schedule:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-pip install -r requirements.txt
-python scripts/generate_report.py --type drops --local
+python scripts/generate_report.py --stage collect --type drops --local
 ```
 
-`--local` prints the draft to your terminal instead of creating a GitHub Issue.
-This is the fast loop for iterating on a spec.
+Or draft from an existing review issue:
+
+```bash
+python scripts/generate_report.py --stage draft --issue 12 --local
+```
+
+`--local` prints to your terminal, creates no issues, and never writes to the
+history ledger — so testing can't pollute your dedup state.
 
 ## Setup
 

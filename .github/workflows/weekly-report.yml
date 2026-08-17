@@ -1,27 +1,48 @@
 name: Weekly Fashion LinkedIn Report
 
+# Stage 1 (collect) runs on a schedule and posts a ranked candidate list.
+# Stage 2 (draft) fires when you add the `approved` label to that issue.
+
 on:
   schedule:
     # 12:00 UTC ≈ 8am ET (7am during EDT) — adjust for your timezone/DST preference
-    - cron: '0 12 * * 1'  # Monday — industry news roundup
-    - cron: '0 12 * * 3'  # Wednesday — collections & collaborations
+    - cron: '0 12 * * 1'  # Monday — industry news candidates
+    - cron: '0 12 * * 3'  # Wednesday — collections & collaborations candidates
+  issues:
+    types: [labeled]
   workflow_dispatch:
     inputs:
-      type:
-        description: 'Report type'
+      stage:
+        description: 'Which stage to run'
         required: true
+        type: choice
+        options:
+          - collect
+          - draft
+        default: collect
+      type:
+        description: 'Report type (collect only)'
+        required: false
         type: choice
         options:
           - industry
           - drops
-        default: industry
+        default: drops
+      issue:
+        description: 'Review issue number (draft only)'
+        required: false
+        type: string
 
 permissions:
   issues: write
   contents: write   # needed to commit the updated history/covered.json ledger
 
 jobs:
-  generate:
+  collect:
+    # Scheduled runs, or a manual dispatch asking for collect.
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.stage == 'collect')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,11 +64,41 @@ jobs:
             echo "type=drops" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Generate report and open issue
+      - name: Collect and rank candidates
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/generate_report.py --type ${{ steps.type.outputs.type }}
+        run: python scripts/generate_report.py --stage collect --type ${{ steps.type.outputs.type }}
+
+  draft:
+    # Fires only when the `approved` label lands on a review issue.
+    if: >-
+      (github.event_name == 'issues' && github.event.label.name == 'approved') ||
+      (github.event_name == 'workflow_dispatch' && inputs.stage == 'draft')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      - name: Resolve issue number
+        id: issue
+        run: |
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=${{ inputs.issue }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Draft post from approved candidates
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/generate_report.py --stage draft --issue ${{ steps.issue.outputs.number }}
 
       - name: Commit updated coverage ledger
         run: |
@@ -58,7 +109,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add history/covered.json
-          git commit -m "Record covered items for ${{ steps.type.outputs.type }} $(date -u +%Y-%m-%d)"
-          # Rebase in case you pushed a spec edit while the job was running
+          git commit -m "Record covered items $(date -u +%Y-%m-%d)"
           git pull --rebase --autostash origin main
           git push origin HEAD:main
