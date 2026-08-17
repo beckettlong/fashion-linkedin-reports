@@ -52,7 +52,23 @@ put the higher **relevance** first — fit to the beat breaks ties, not heat.
 ## Per-candidate output
 
 Every candidate needs: exact article title, direct URL, publishing outlet,
-brands involved, release/announce date, both scores, and a single-sentence
+brands involved, **both dates** (see below), both scores, and a single-sentence
 justification saying what the drop is and why it scored the way it did. The
 justification is what the reviewer reads to decide — make it concrete and
 specific, never generic praise.
+
+## The two dates — keep them separate
+
+These are different facts and must never be conflated:
+
+- **`published_at`** — when the *article* ran. Tells the reviewer how fresh the
+  coverage is and whether a story has already been widely reported.
+- **`released_at`** — when the *product* becomes available. Tells the reviewer
+  whether they are writing a preview or a retrospective.
+
+Include a time of day whenever one is reported — sneaker and streetwear drops
+routinely launch at a stated hour (e.g. `2026-08-15 10:00 ET`), and that detail
+is useful to the reader. Use `unknown` when a date genuinely isn't stated, and
+`TBC` when a release is explicitly announced-but-undated. **Never infer one date
+from the other**; a preview published three weeks ahead of launch is normal, and
+guessing collapses exactly the distinction this field exists to preserve.

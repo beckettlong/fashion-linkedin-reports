@@ -103,16 +103,27 @@ you found. Then output this marker on its own line:
 
 followed by a single JSON array, sorted by combined score descending. One
 object per candidate with exactly these fields:
-  "id"        - "c01", "c02", ... in final sorted order
-  "title"     - the article headline, exactly as published
-  "url"       - direct link to the article
-  "source"    - publishing outlet, e.g. "WWD"
-  "brands"    - array of brands/companies involved
-  "date"      - YYYY-MM-DD the story was announced or published
-  "relevance" - integer 1-10
-  "hype"      - integer 1-10
-  "why"       - one sentence: what the drop is and why it scored this way
-  "key"       - short lowercase slug for dedup, e.g. "burberry-hunza-g-swim"
+  "id"           - "c01", "c02", ... in final sorted order
+  "title"        - the article headline, exactly as published
+  "url"          - direct link to the article
+  "source"       - publishing outlet, e.g. "WWD"
+  "brands"       - array of brands/companies involved
+  "published_at" - when the ARTICLE was published: "YYYY-MM-DD", optionally
+                   with a time if stated, e.g. "2026-08-12 09:30 ET".
+                   Use "unknown" if the article carries no date.
+  "released_at"  - when the DROP itself releases or released. Same format.
+                   Many drops have a specific launch time — include it when
+                   reported, e.g. "2026-08-15 10:00 ET". Use "unknown" if no
+                   release date is given, or "TBC" if explicitly unannounced.
+  "relevance"    - integer 1-10
+  "hype"         - integer 1-10
+  "why"          - one sentence: what the drop is and why it scored this way
+  "key"          - short lowercase slug for dedup, e.g. "burberry-hunza-g-swim"
+
+These two dates are DIFFERENT and must not be conflated. The article date is
+when coverage ran; the release date is when the product becomes available. A
+preview published well ahead of launch is common — report both accurately and
+never copy one into the other as a guess.
 Output only the raw JSON array after the marker — no prose, no code fence.
 """
 
@@ -260,6 +271,22 @@ def gh_request(method: str, path: str, **kwargs) -> dict:
     return resp.json()
 
 
+def release_status(released_at: str) -> str:
+    """Label a drop as upcoming / live based on its release date."""
+    if not released_at or released_at.lower() in {"unknown", "tbc", "n/a"}:
+        return "❔ undated"
+    try:
+        when = datetime.strptime(released_at[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return "❔ undated"
+    delta = (when - date.today()).days
+    if delta > 0:
+        return f"🔜 in {delta}d"
+    if delta == 0:
+        return "🔴 today"
+    return f"✅ {abs(delta)}d ago"
+
+
 def render_review_issue(report_type: str, candidates: list, notes: str) -> str:
     """Build the checkbox list a human ticks to approve stories."""
     label = REPORTS[report_type]["label"]
@@ -272,16 +299,22 @@ def render_review_issue(report_type: str, candidates: list, notes: str) -> str:
         "",
         "Unticked stories are ignored. If nothing is ticked, no draft is made.",
         "",
-        "| | score | story |",
-        "|---|---|---|",
+        "`drops` = when the product releases · `article` = when coverage ran",
+        "",
+        "| | score | timing | story |",
+        "|---|---|---|---|",
     ]
     for c in candidates:
         combined = c.get("relevance", 0) + c.get("hype", 0)
+        released = c.get("released_at", "unknown")
+        published = c.get("published_at", "unknown")
         lines.append(
             f'| `{c["id"]}` | **{combined}** '
             f'<br><sub>rel {c.get("relevance","?")} · hype {c.get("hype","?")}</sub> '
+            f'| <sub>**drops** {released}<br>{release_status(released)}'
+            f'<br><br>**article** {published}</sub> '
             f'| [{c.get("title","(untitled)")}]({c.get("url","")})'
-            f'<br><sub>{c.get("source","?")} · {c.get("date","?")} · '
+            f'<br><sub>{c.get("source","?")} · '
             f'{", ".join(c.get("brands", []))}</sub>'
             f'<br>{c.get("why","")} |'
         )
@@ -401,7 +434,9 @@ def stage_draft(issue_number: int, local: bool) -> None:
         f'{i}. [{c["key"]}] {c.get("title","")}\n'
         f'   URL: {c.get("url","")}\n'
         f'   Brands: {", ".join(c.get("brands", []))}\n'
-        f'   Date: {c.get("date","")}  Source: {c.get("source","")}\n'
+        f'   Source: {c.get("source","")}\n'
+        f'   Article published: {c.get("published_at","unknown")}\n'
+        f'   Drop releases: {c.get("released_at","unknown")}\n'
         f'   Editor note: {c.get("why","")}'
         for i, c in enumerate(approved, 1)
     )
